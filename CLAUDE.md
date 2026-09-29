@@ -10,6 +10,28 @@ Monorepo com dois projetos independentes:
 
 Plataforma de processamento de documentos com IA, contendo gestão de usuários, empresas, classificadores e auditoria.
 
+## Organização do repositório
+
+Este repositório raiz funciona como um monorepo de coordenação:
+
+- `FlaxFlow.PortalAI.Backend/` é um submódulo Git apontando para o repositório do backend.
+- `FlaxFlow.PortalAI.Frontend/` é um submódulo Git apontando para o repositório do frontend.
+- `mobile/` é código versionado diretamente neste repositório raiz.
+
+Ao clonar o monorepo, inicializar os submódulos com:
+
+```bash
+git submodule update --init --recursive
+```
+
+Alterações dentro de um submódulo devem ser commitadas e publicadas no repositório daquele projeto. Depois, o repositório raiz deve registrar o novo commit apontado:
+
+```bash
+git add FlaxFlow.PortalAI.Backend FlaxFlow.PortalAI.Frontend
+```
+
+O repositório raiz registra apenas o commit de cada submódulo; ele não incorpora os arquivos internos desses projetos.
+
 ---
 
 ## Frontend
