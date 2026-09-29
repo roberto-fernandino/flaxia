@@ -1,0 +1,15 @@
+.DS_Store
+.cursor/
+.claude/
+.playwright-mcp/
+*.json
+*/node_modules/*
+# Apps com repositórios Git próprios (não fazem parte deste repo de SDKs)
+videos/
+
+# Python / Node artefatos locais
+sdks/python/.venv/
+sdks/python/dist/
+sdks/python/build/
+sdks/python/.pytest_cache/
+sdks/typescript/node_modules/

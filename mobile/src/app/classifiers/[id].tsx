@@ -1,0 +1,19 @@
+import { useLocalSearchParams, router } from 'expo-router';
+import { useCallback, useEffect, useState } from 'react';
+import { Pressable, StyleSheet, TextInput } from 'react-native';
+import { useAuth } from '@/auth/AuthContext';
+import { apiRequest } from '@/lib/api';
+import { Card, LoadingOrError, Screen } from '@/components/screen';
+import { ThemedText } from '@/components/themed-text';
+
+type Item = Record<string, unknown>;
+export default function ClassifierWorkspaceScreen() {
+  const { id } = useLocalSearchParams<{ id: string }>(); const { token } = useAuth(); const [classifier, setClassifier] = useState<Item>(); const [documents, setDocuments] = useState<Item[]>([]); const [name, setName] = useState(''); const [error, setError] = useState<string>(); const [message, setMessage] = useState<string>();
+  const load = useCallback(async () => { try { const [c, d] = await Promise.all([apiRequest<Item>(`/engine/classifiers/${id}`, {}, token ?? undefined), apiRequest<Item[]>(`/engine/classifiers/${id}/documents`, {}, token ?? undefined)]); setClassifier(c.data); setName(String(c.data?.name ?? '')); setDocuments(d.data ?? []); } catch (e) { setError(e instanceof Error ? e.message : 'Falha ao carregar workspace.'); } }, [id, token]);
+  useEffect(() => { void load(); }, [load]);
+  async function action(documentId: string, endpoint: string) { try { await apiRequest(`/engine/project_documents/${documentId}/${endpoint}`, { method: 'POST', body: JSON.stringify({}) }, token ?? undefined); setMessage('Ação enviada.'); await load(); } catch (e) { setMessage(e instanceof Error ? e.message : 'Falha na ação.'); } }
+  async function update() { if (!id || !name.trim()) return; try { await apiRequest(`/engine/classifiers/${id}`, { method: 'PUT', body: JSON.stringify({ name: name.trim() }) }, token ?? undefined); setMessage('Classificador atualizado.'); await load(); } catch (e) { setMessage(e instanceof Error ? e.message : 'Falha ao atualizar.'); } }
+  async function remove() { if (!id) return; try { await apiRequest(`/engine/classifiers/${id}`, { method: 'DELETE' }, token ?? undefined); router.back(); } catch (e) { setMessage(e instanceof Error ? e.message : 'Falha ao excluir.'); } }
+  return <Screen title={String(classifier?.name ?? 'Workspace')}><Pressable onPress={() => router.back()}><ThemedText type="linkPrimary">Voltar</ThemedText></Pressable><LoadingOrError loading={!classifier && !error} error={error} />{message && <ThemedText>{message}</ThemedText>}<Card><TextInput value={name} onChangeText={setName} placeholder="Nome do classificador" style={styles.input} /><Pressable onPress={() => void update()} style={styles.button}><ThemedText style={styles.buttonText}>Salvar nome</ThemedText></Pressable><Pressable onPress={() => void remove()}><ThemedText style={styles.danger}>Excluir classificador</ThemedText></Pressable></Card><ThemedText type="subtitle">Documentos</ThemedText>{documents.length === 0 && <ThemedText>Nenhum documento neste projeto.</ThemedText>}{documents.map((doc, i) => { const docId = String(doc.project_document_id ?? doc.projectDocumentId ?? i); return <Card key={docId}><ThemedText type="smallBold">{String(doc.file_name ?? doc.fileName ?? doc.name ?? 'Documento')}</ThemedText><ThemedText>Status: {String(doc.status ?? 'pendente')}</ThemedText><Pressable onPress={() => action(docId, 'classify')} style={styles.button}><ThemedText style={styles.buttonText}>Classificar</ThemedText></Pressable></Card>; })}</Screen>;
+}
+const styles = StyleSheet.create({ input: { borderWidth: 1, borderColor: '#cbd5e1', borderRadius: 10, padding: 12, backgroundColor: '#fff' }, button: { padding: 11, borderRadius: 9, backgroundColor: '#208AEF', alignItems: 'center' }, buttonText: { color: '#fff', fontWeight: '700' }, danger: { color: '#b91c1c', fontWeight: '700' } });

@@ -1,0 +1,6 @@
+[submodule "FlaxFlow.PortalAI.Backend"]
+	path = FlaxFlow.PortalAI.Backend
+	url = https://github.com/flaxflow/FlaxFlow.PortalAI.Backend.git
+[submodule "FlaxFlow.PortalAI.Frontend"]
+	path = FlaxFlow.PortalAI.Frontend
+	url = https://github.com/flaxflow/FLaxFlow.PortalAI.Frontend.git

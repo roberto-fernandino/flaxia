@@ -1,0 +1,38 @@
+name: Publish SDK
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "sdk-v*"
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Build & publish @flaxflow/sdk
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: FlaxFlow.PortalAI.Backend/sdks/typescript
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: FlaxFlow.PortalAI.Backend/sdks/typescript/package-lock.json
+          registry-url: https://registry.npmjs.org
+
+      - run: npm ci || npm install
+
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
+      - run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

@@ -1,0 +1,20 @@
+import { useEffect, useState } from 'react';
+import { Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { router } from 'expo-router';
+import { useAuth } from '@/auth/AuthContext';
+import { apiRequest } from '@/lib/api';
+import { Card, LoadingOrError, Screen } from '@/components/screen';
+import { ThemedText } from '@/components/themed-text';
+
+type Job = Record<string, unknown>;
+type Scope = 'all' | 'document_text' | 'extracted_fields';
+type SearchResponse = { items?: { job?: Job; score?: number }[]; total?: number };
+
+export default function OperationalQueriesScreen() {
+  const { token } = useAuth(); const [query, setQuery] = useState(''); const [scope, setScope] = useState<Scope>('all'); const [page, setPage] = useState(0); const [items, setItems] = useState<Job[]>([]); const [total, setTotal] = useState(0); const [loading, setLoading] = useState(true); const [error, setError] = useState<string>();
+  useEffect(() => { const timer = setTimeout(() => { const load = async () => { try { setLoading(true); setError(undefined); const trimmed = query.trim(); const path = trimmed ? `/engine/processing_jobs/semantic_search?q=${encodeURIComponent(trimmed)}&page=${page}&pageSize=10&status=completed&scope=${scope}` : `/engine/processing_jobs?page=${page}&pageSize=10&status=completed`; const response = await apiRequest<SearchResponse | { items?: Job[]; total?: number }>(path, {}, token ?? undefined); const data = response.data; if (trimmed) { const searched = data as SearchResponse; setItems((searched.items ?? []).map((entry) => entry.job ?? {})); setTotal(Number(searched.total ?? 0)); } else { const browse = data as { items?: Job[]; total?: number }; setItems(browse.items ?? []); setTotal(Number(browse.total ?? 0)); } } catch (e) { setError(e instanceof Error ? e.message : 'Falha ao pesquisar jobs.'); } finally { setLoading(false); } }; void load(); }, 250); return () => clearTimeout(timer); }, [query, scope, page, token]);
+  useEffect(() => { setPage(0); }, [query, scope]);
+  const totalPages = Math.max(1, Math.ceil(total / 10));
+  return <Screen title="Consultas operacionais"><TextInput value={query} onChangeText={setQuery} placeholder="Buscar no texto ou nos campos extraídos" style={styles.input} autoCapitalize="none" /><View style={styles.scopes}>{(['all', 'document_text', 'extracted_fields'] as Scope[]).map((item) => <Pressable key={item} onPress={() => setScope(item)} style={[styles.scope, scope === item && styles.active]}><ThemedText>{item === 'all' ? 'Tudo' : item === 'document_text' ? 'Documento' : 'Campos'}</ThemedText></Pressable>)}</View><LoadingOrError loading={loading} error={error} />{!loading && items.length === 0 && !error && <ThemedText>Nenhum job encontrado.</ThemedText>}{items.map((job, index) => { const id = String(job.process_job_id ?? job.processJobId ?? index); return <Pressable key={id} onPress={() => router.push(`/operational/queries/${id}`)}><Card><ThemedText type="smallBold">{String(job.file_name ?? job.fileName ?? 'Documento')}</ThemedText><ThemedText>Status: {String(job.status ?? 'completed')}</ThemedText><ThemedText>{String(job.started_at ?? job.startedAt ?? '')}</ThemedText></Card></Pressable>; })}<View style={styles.pagination}><Pressable disabled={page === 0} onPress={() => setPage((current) => Math.max(0, current - 1))}><ThemedText type="linkPrimary">Anterior</ThemedText></Pressable><ThemedText>Página {page + 1} de {totalPages}</ThemedText><Pressable disabled={page + 1 >= totalPages} onPress={() => setPage((current) => current + 1)}><ThemedText type="linkPrimary">Próxima</ThemedText></Pressable></View></Screen>;
+}
+const styles = StyleSheet.create({ input: { borderWidth: 1, borderColor: '#cbd5e1', borderRadius: 10, padding: 13, backgroundColor: '#fff' }, scopes: { flexDirection: 'row', gap: 8 }, scope: { flex: 1, padding: 10, borderRadius: 8, backgroundColor: '#e5e7eb', alignItems: 'center' }, active: { backgroundColor: '#bfdbfe' }, pagination: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' } });
