@@ -1,1 +1,1 @@
-export { default } from './classifiers';
+export { default } from './classifiers/index';

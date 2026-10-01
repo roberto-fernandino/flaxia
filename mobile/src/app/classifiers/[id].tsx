@@ -1,19 +1,108 @@
-import { useLocalSearchParams, router } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
-import { Pressable, StyleSheet, TextInput } from 'react-native';
-import { useAuth } from '@/auth/AuthContext';
-import { apiRequest } from '@/lib/api';
-import { Card, LoadingOrError, Screen } from '@/components/screen';
+import { router, useLocalSearchParams } from 'expo-router';
+import { useState } from 'react';
+import { Alert, Pressable, StyleSheet, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { ThemedText } from '@/components/themed-text';
+import { ThemedView } from '@/components/themed-view';
+import { DocumentsPanel } from '@/components/projects/documents-panel';
+import { ExistingClassMatchModal } from '@/components/projects/flow-modals';
+import { SchemaPanel } from '@/components/projects/schema-panel';
+import { ToastBanner, palette, useProjectColors } from '@/components/projects/ui';
+import { useProjectWorkspace } from '@/components/projects/use-workspace';
+import { ViewerPanel } from '@/components/projects/viewer-panel';
 
-type Item = Record<string, unknown>;
-export default function ClassifierWorkspaceScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>(); const { token } = useAuth(); const [classifier, setClassifier] = useState<Item>(); const [documents, setDocuments] = useState<Item[]>([]); const [name, setName] = useState(''); const [error, setError] = useState<string>(); const [message, setMessage] = useState<string>();
-  const load = useCallback(async () => { try { const [c, d] = await Promise.all([apiRequest<Item>(`/engine/classifiers/${id}`, {}, token ?? undefined), apiRequest<Item[]>(`/engine/classifiers/${id}/documents`, {}, token ?? undefined)]); setClassifier(c.data); setName(String(c.data?.name ?? '')); setDocuments(d.data ?? []); } catch (e) { setError(e instanceof Error ? e.message : 'Falha ao carregar workspace.'); } }, [id, token]);
-  useEffect(() => { void load(); }, [load]);
-  async function action(documentId: string, endpoint: string) { try { await apiRequest(`/engine/project_documents/${documentId}/${endpoint}`, { method: 'POST', body: JSON.stringify({}) }, token ?? undefined); setMessage('Ação enviada.'); await load(); } catch (e) { setMessage(e instanceof Error ? e.message : 'Falha na ação.'); } }
-  async function update() { if (!id || !name.trim()) return; try { await apiRequest(`/engine/classifiers/${id}`, { method: 'PUT', body: JSON.stringify({ name: name.trim() }) }, token ?? undefined); setMessage('Classificador atualizado.'); await load(); } catch (e) { setMessage(e instanceof Error ? e.message : 'Falha ao atualizar.'); } }
-  async function remove() { if (!id) return; try { await apiRequest(`/engine/classifiers/${id}`, { method: 'DELETE' }, token ?? undefined); router.back(); } catch (e) { setMessage(e instanceof Error ? e.message : 'Falha ao excluir.'); } }
-  return <Screen title={String(classifier?.name ?? 'Workspace')}><Pressable onPress={() => router.back()}><ThemedText type="linkPrimary">Voltar</ThemedText></Pressable><LoadingOrError loading={!classifier && !error} error={error} />{message && <ThemedText>{message}</ThemedText>}<Card><TextInput value={name} onChangeText={setName} placeholder="Nome do classificador" style={styles.input} /><Pressable onPress={() => void update()} style={styles.button}><ThemedText style={styles.buttonText}>Salvar nome</ThemedText></Pressable><Pressable onPress={() => void remove()}><ThemedText style={styles.danger}>Excluir classificador</ThemedText></Pressable></Card><ThemedText type="subtitle">Documentos</ThemedText>{documents.length === 0 && <ThemedText>Nenhum documento neste projeto.</ThemedText>}{documents.map((doc, i) => { const docId = String(doc.project_document_id ?? doc.projectDocumentId ?? i); return <Card key={docId}><ThemedText type="smallBold">{String(doc.file_name ?? doc.fileName ?? doc.name ?? 'Documento')}</ThemedText><ThemedText>Status: {String(doc.status ?? 'pendente')}</ThemedText><Pressable onPress={() => action(docId, 'classify')} style={styles.button}><ThemedText style={styles.buttonText}>Classificar</ThemedText></Pressable></Card>; })}</Screen>;
+type Tab = 'documents' | 'viewer' | 'schema';
+
+/** Workspace do projeto — porta mobile de `ProjectWorkspace` (web). Os três painéis viram abas. */
+export default function ProjectWorkspaceScreen() {
+  const { id } = useLocalSearchParams<{ id: string }>();
+  const ws = useProjectWorkspace(String(id));
+  const c = useProjectColors();
+  const [tab, setTab] = useState<Tab>('documents');
+
+  const goBack = () => (router.canGoBack() ? router.back() : router.replace('/classifiers'));
+
+  const confirmDeleteProject = () => {
+    if (!ws.classifier) return;
+    Alert.alert(
+      'Excluir projeto',
+      `Excluir o projeto "${ws.classifier.name}"? Todos os documentos dele serão removidos permanentemente. Isso não pode ser desfeito.`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        { text: 'Excluir', style: 'destructive', onPress: async () => { if (await ws.deleteProject()) router.replace('/classifiers'); } },
+      ],
+    );
+  };
+
+  const openDocument = (docId: string) => {
+    ws.selectDocument(docId);
+    setTab('viewer');
+  };
+
+  const tabs: { key: Tab; label: string }[] = [
+    { key: 'documents', label: `Documentos (${ws.documents.length})` },
+    { key: 'viewer', label: 'Documento' },
+    { key: 'schema', label: 'Classe' },
+  ];
+
+  return (
+    <ThemedView style={{ flex: 1 }}>
+      <SafeAreaView style={{ flex: 1 }} edges={['top']}>
+        <View style={[s.header, { borderColor: c.border }]}>
+          <Pressable onPress={goBack} hitSlop={10}>
+            <ThemedText style={{ fontSize: 13, color: c.textMuted }}>← Projetos</ThemedText>
+          </Pressable>
+          <ThemedText numberOfLines={1} style={{ flex: 1, fontSize: 17, fontWeight: '700', color: c.text }}>{ws.classifier?.name ?? ''}</ThemedText>
+          {ws.classifier && (
+            <Pressable accessibilityLabel="Excluir projeto" disabled={!!ws.busy.deleteProject} onPress={confirmDeleteProject} hitSlop={10} style={{ opacity: ws.busy.deleteProject ? 0.4 : 1 }}>
+              <ThemedText style={{ fontSize: 18 }}>🗑</ThemedText>
+            </Pressable>
+          )}
+        </View>
+
+        {!ws.classifier ? (
+          <View style={s.center}>
+            <ThemedText style={{ color: c.textMuted }}>{!ws.loaded ? 'Carregando workspace…' : ws.notFound ? 'Projeto não encontrado' : 'Falha ao carregar'}</ThemedText>
+          </View>
+        ) : (
+          <>
+            <View style={[s.tabs, { backgroundColor: c.surfaceAlt, borderColor: c.border }]}>
+              {tabs.map((t) => {
+                const active = tab === t.key;
+                return (
+                  <Pressable key={t.key} onPress={() => setTab(t.key)} style={[s.tab, active && { backgroundColor: c.surface, shadowOpacity: 0.08 }]}>
+                    <ThemedText numberOfLines={1} style={{ fontSize: 13, fontWeight: active ? '700' : '500', color: active ? palette.primary : c.textMuted }}>{t.label}</ThemedText>
+                  </Pressable>
+                );
+              })}
+            </View>
+            <ToastBanner toast={ws.toast} onDismiss={ws.dismissToast} />
+            <View style={{ flex: 1 }}>
+              {tab === 'documents' && <DocumentsPanel ws={ws} onOpenDocument={openDocument} />}
+              {tab === 'viewer' && <ViewerPanel ws={ws} />}
+              {tab === 'schema' && <SchemaPanel ws={ws} />}
+            </View>
+          </>
+        )}
+      </SafeAreaView>
+
+      <ExistingClassMatchModal
+        visible={!!ws.match}
+        className={ws.match?.displayName ?? ''}
+        isLinkedToProject={ws.match?.isLinkedToProject ?? false}
+        advice={ws.match?.advice}
+        usedInProjects={ws.match?.usedInProjects}
+        onUseExisting={() => ws.resolveMatch('use_existing')}
+        onCreateNew={() => ws.resolveMatch('create_new')}
+        onCancel={() => ws.resolveMatch('cancel')}
+      />
+    </ThemedView>
+  );
 }
-const styles = StyleSheet.create({ input: { borderWidth: 1, borderColor: '#cbd5e1', borderRadius: 10, padding: 12, backgroundColor: '#fff' }, button: { padding: 11, borderRadius: 9, backgroundColor: '#208AEF', alignItems: 'center' }, buttonText: { color: '#fff', fontWeight: '700' }, danger: { color: '#b91c1c', fontWeight: '700' } });
+
+const s = StyleSheet.create({
+  header: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  tabs: { flexDirection: 'row', margin: 12, padding: 3, borderRadius: 10, borderWidth: StyleSheet.hairlineWidth },
+  tab: { flex: 1, alignItems: 'center', paddingVertical: 8, borderRadius: 8, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowRadius: 2, shadowOpacity: 0 },
+});

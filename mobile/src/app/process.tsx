@@ -1,57 +1,132 @@
-import * as DocumentPicker from 'expo-document-picker';
-import { File } from 'expo-file-system';
-import { useEffect, useState } from 'react';
+import { router, useFocusEffect } from 'expo-router';
+import { useCallback, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { useAuth } from '@/auth/AuthContext';
-import { apiRequest } from '@/lib/api';
 import { Screen, Card } from '@/components/screen';
 import { ThemedText } from '@/components/themed-text';
+import { FileSource, PickedFile, pickProjectFile, readBase64 } from '@/components/projects/pick-file';
+import { ClassifierSummary, errorMessage, projectsApi } from '@/lib/projects';
 
-type SelectedFile = { name: string; uri: string; mimeType?: string };
-type Classifier = Record<string, unknown>;
+const SOURCES: { source: FileSource; label: string; icon: string }[] = [
+  { source: 'camera', label: 'Câmera', icon: '📷' },
+  { source: 'photos', label: 'Fotos', icon: '🖼️' },
+  { source: 'files', label: 'Arquivos', icon: '📄' },
+];
+
+type Status = { kind: 'success' | 'error'; text: string };
 
 export default function ProcessScreen() {
   const { token } = useAuth();
-  const [selected, setSelected] = useState<SelectedFile[]>([]);
-  const [status, setStatus] = useState<string>();
+  const [projects, setProjects] = useState<ClassifierSummary[]>([]);
+  const [loadingProjects, setLoadingProjects] = useState(true);
+  const [projectId, setProjectId] = useState<string>();
+  const [selected, setSelected] = useState<PickedFile[]>([]);
+  const [status, setStatus] = useState<Status>();
   const [busy, setBusy] = useState(false);
-  const [classifiers, setClassifiers] = useState<Classifier[]>([]);
-  const [classifierId, setClassifierId] = useState<string>();
-  const [useClassifier, setUseClassifier] = useState(true);
+  const [sentTo, setSentTo] = useState<string>();
 
-  useEffect(() => { apiRequest<Classifier[]>('/engine/classifiers', {}, token ?? undefined).then((r) => setClassifiers(r.data ?? [])).catch(() => undefined); }, [token]);
+  useFocusEffect(useCallback(() => {
+    setLoadingProjects(true);
+    projectsApi.list(token)
+      .then((r) => {
+        const list = r.data ?? [];
+        setProjects(list);
+        setProjectId((current) => current && list.some((p) => p.classifierId === current) ? current : list.length === 1 ? list[0].classifierId : undefined);
+      })
+      .catch(() => undefined)
+      .finally(() => setLoadingProjects(false));
+  }, [token]));
 
-  async function pickFiles() {
-    const result = await DocumentPicker.getDocumentAsync({
-      type: ['application/pdf', 'image/png', 'image/jpeg', 'image/webp'],
-      multiple: true,
-      copyToCacheDirectory: true,
-    });
-    if (!result.canceled) setSelected(result.assets.map((asset) => ({ name: asset.name, uri: asset.uri, mimeType: asset.mimeType })));
+  async function addFile(source: FileSource) {
+    setStatus(undefined);
+    const result = await pickProjectFile(source);
+    if (result.error) setStatus({ kind: 'error', text: result.error });
+    else if (result.file) { const file = result.file; setSelected((current) => [...current, file]); setSentTo(undefined); }
   }
 
   async function processFiles() {
-    if (!selected.length) return;
+    if (!selected.length || !projectId) return;
     setBusy(true); setStatus(undefined);
-    try {
-      const files = await Promise.all(selected.map(async (item) => {
-        const file = new File(item.uri);
-        const type = item.mimeType?.split('/')[1] === 'jpg' ? 'jpeg' : item.mimeType?.split('/')[1] ?? 'pdf';
-        return { documentType: type, base64Document: await file.base64(), fileName: item.name };
-      }));
-      const result = await apiRequest<{ processingJobBatchId?: string }>('/engine/process_documents', { method: 'POST', body: JSON.stringify({ isMultiple: files.length > 1, useClassifier, classifierId: useClassifier ? classifierId : undefined, files }) }, token ?? undefined);
-      setStatus(result.message ?? 'Documentos enviados para processamento.'); setSelected([]);
-    } catch (error) { setStatus(error instanceof Error ? error.message : 'Falha ao processar documentos.'); }
-    finally { setBusy(false); }
+    const failed: PickedFile[] = [];
+    for (const file of selected) {
+      try {
+        await projectsApi.upload(token, projectId, { base64Document: await readBase64(file), mimeType: file.mimeType, fileName: file.name });
+      } catch (error) {
+        failed.push(file);
+        setStatus({ kind: 'error', text: errorMessage(error, `Falha ao enviar ${file.name}.`) });
+      }
+    }
+    const sent = selected.length - failed.length;
+    setSelected(failed);
+    if (sent) {
+      setSentTo(projectId);
+      if (!failed.length) setStatus({ kind: 'success', text: `${sent} documento(s) enviado(s) para processamento.` });
+    }
+    setBusy(false);
   }
 
+  const project = projects.find((p) => p.classifierId === projectId);
+  const canSend = !!selected.length && !!projectId && !busy;
+
   return <Screen title="Processar documentos">
-    <Card><ThemedText>Selecione PDF ou imagens para enviar ao mecanismo de processamento.</ThemedText><Pressable onPress={() => setUseClassifier((current) => !current)}><ThemedText>{useClassifier ? '☑' : '☐'} Usar classificador</ThemedText></Pressable>{useClassifier && classifiers.map((item, index) => { const id = String(item.classifier_id ?? item.classifierId ?? index); return <Pressable key={id} onPress={() => setClassifierId(id)}><ThemedText>{classifierId === id ? '◉' : '○'} {String(item.name ?? 'Classificador')}</ThemedText></Pressable>; })}
-      <Pressable onPress={pickFiles} style={styles.secondary}><ThemedText>Selecionar arquivos</ThemedText></Pressable>
+    <Card>
+      <ThemedText type="smallBold">1. Projeto</ThemedText>
+      {loadingProjects && !projects.length && <ThemedText style={styles.muted}>Carregando projetos...</ThemedText>}
+      {!loadingProjects && !projects.length && <>
+        <ThemedText style={styles.muted}>Nenhum projeto encontrado.</ThemedText>
+        <Pressable onPress={() => router.push('/classifiers')} style={styles.secondary}><ThemedText>Criar projeto</ThemedText></Pressable>
+      </>}
+      {projects.map((item) => {
+        const active = item.classifierId === projectId;
+        return <Pressable key={item.classifierId} onPress={() => setProjectId(item.classifierId)} style={[styles.option, active && styles.optionActive]}>
+          <View style={[styles.radio, active && styles.radioActive]} />
+          <View style={styles.flex}>
+            <ThemedText type="smallBold">{item.name || 'Projeto'}</ThemedText>
+            <ThemedText style={styles.muted}>{item.modelsCount} classe(s)</ThemedText>
+          </View>
+        </Pressable>;
+      })}
     </Card>
-    {selected.map((item) => <View key={item.uri} style={styles.file}><ThemedText>{item.name}</ThemedText></View>)}
-    {!!selected.length && <Pressable disabled={busy} onPress={processFiles} style={styles.primary}><ThemedText style={styles.primaryText}>{busy ? 'Enviando...' : 'Processar agora'}</ThemedText></Pressable>}
-    {status && <ThemedText>{status}</ThemedText>}
+
+    <Card>
+      <ThemedText type="smallBold">2. Documentos</ThemedText>
+      <ThemedText style={styles.muted}>PDF ou imagens (até 20 MB).</ThemedText>
+      <View style={styles.sources}>
+        {SOURCES.map(({ source, label, icon }) => <Pressable key={source} disabled={busy} onPress={() => addFile(source)} style={styles.source}>
+          <ThemedText style={styles.sourceIcon}>{icon}</ThemedText>
+          <ThemedText>{label}</ThemedText>
+        </Pressable>)}
+      </View>
+      {selected.map((item, index) => <View key={`${item.uri}-${index}`} style={styles.file}>
+        <ThemedText numberOfLines={1} style={styles.flex}>{item.name}</ThemedText>
+        {!busy && <Pressable hitSlop={8} onPress={() => setSelected((current) => current.filter((_, i) => i !== index))}><ThemedText style={styles.remove}>✕</ThemedText></Pressable>}
+      </View>)}
+    </Card>
+
+    {!!selected.length && <Pressable disabled={!canSend} onPress={processFiles} style={[styles.primary, !canSend && styles.disabled]}>
+      <ThemedText style={styles.primaryText}>{busy ? 'Enviando...' : !projectId ? 'Selecione um projeto' : `Enviar para ${project?.name ?? 'projeto'}`}</ThemedText>
+    </Pressable>}
+    {status && <ThemedText style={status.kind === 'error' ? styles.error : styles.success}>{status.text}</ThemedText>}
+    {sentTo && <Pressable onPress={() => router.push(`/classifiers/${sentTo}`)} style={styles.secondary}><ThemedText>Abrir projeto</ThemedText></Pressable>}
   </Screen>;
 }
-const styles = StyleSheet.create({ secondary: { marginTop: 12, padding: 12, borderWidth: 1, borderColor: '#94a3b8', borderRadius: 10, alignItems: 'center' }, primary: { padding: 14, borderRadius: 12, backgroundColor: '#208AEF', alignItems: 'center' }, primaryText: { color: '#fff', fontWeight: '700' }, file: { padding: 12, borderRadius: 10, backgroundColor: '#e2e8f0' } });
+
+const styles = StyleSheet.create({
+  flex: { flex: 1 },
+  muted: { opacity: 0.6, fontSize: 14 },
+  option: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: 10, borderWidth: 1, borderColor: '#cbd5e1', backgroundColor: '#fff' },
+  optionActive: { borderColor: '#208AEF', backgroundColor: '#eff6ff' },
+  radio: { width: 18, height: 18, borderRadius: 9, borderWidth: 2, borderColor: '#94a3b8' },
+  radioActive: { borderColor: '#208AEF', borderWidth: 6 },
+  sources: { flexDirection: 'row', gap: 8, marginTop: 6 },
+  source: { flex: 1, alignItems: 'center', gap: 4, paddingVertical: 14, borderRadius: 10, borderWidth: 1, borderColor: '#cbd5e1', backgroundColor: '#fff' },
+  sourceIcon: { fontSize: 24, lineHeight: 30 },
+  file: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12, borderRadius: 10, backgroundColor: '#e2e8f0' },
+  remove: { opacity: 0.6, fontWeight: '700' },
+  secondary: { marginTop: 4, padding: 12, borderWidth: 1, borderColor: '#94a3b8', borderRadius: 10, alignItems: 'center' },
+  primary: { padding: 14, borderRadius: 12, backgroundColor: '#208AEF', alignItems: 'center' },
+  disabled: { opacity: 0.5 },
+  primaryText: { color: '#fff', fontWeight: '700' },
+  error: { color: '#b91c1c' },
+  success: { color: '#15803d' },
+});
