@@ -158,7 +158,8 @@ Backend e frontend são hospedados na mesma VPS via **Dokploy** (Docker Swarm + 
 
 ## CI/CD
 
-- Cada projeto (`FlaxFlow.PortalAI.Backend/`, `FlaxFlow.PortalAI.Frontend/`) tem seu próprio `.github/workflows/push_pr.yml`: roda build/test em PRs e, em push para `main`, builda e publica a imagem Docker em `ghcr.io/roberto-fernandino/<flaxflow-backend|flaxflow-frontend>` (tags `latest` + versão do `Cargo.toml`/`package.json`). Requer o secret `GHCR_PAT` (personal access token com escopo `write:packages`) configurado em cada repositório.
-- **O deploy em si não depende desse GHCR** — o Dokploy builda a imagem diretamente do `Dockerfile` via git push (ver seção de Infraestrutura acima). A publicação no GHCR existe para versionamento/backup das imagens e para permitir trocar o modo de deploy do Dokploy para "Docker Image" (pull do GHCR) no futuro, se necessário.
+- **Backend** (`FlaxFlow.PortalAI.Backend/.github/workflows/push_pr.yml`): só roda testes (`sqlx migrate run` + `cargo test` com Postgres de serviço) em PRs e pushes para `main` que alteram `*.rs`. Não há build/publicação de imagem nem release no CI — o Dokploy builda e faz deploy a partir do `Dockerfile` no push. Os workflows `sdk-*.yml` cuidam apenas dos SDKs em `sdks/`.
+- **Frontend** (`FlaxFlow.PortalAI.Frontend/.github/workflows/push_pr.yml`): roda build/test em PRs e, em push para `main`, publica a imagem em `ghcr.io/roberto-fernandino/flaxflow-frontend` (tags `latest` + versão do `package.json`, requer secret `GHCR_PAT`). O deploy não depende desse GHCR.
+- Rodar os testes do backend antes de dar push (`cargo test`; requer OpenCV + cmake + pkg-config instalados localmente).
 - Dockerfile multi-stage para o backend (Rust) e para o frontend (Next.js, `output: "standalone"`).
 - O antigo pipeline de deploy via SSH (`release.yml`, `docker compose pull && up -d`) foi removido — substituído pelo deploy nativo do Dokploy.
