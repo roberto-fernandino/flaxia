@@ -1,6 +1,7 @@
 import * as DocumentPicker from 'expo-document-picker';
 import { File } from 'expo-file-system';
 import * as ImagePicker from 'expo-image-picker';
+import { scanDocument } from '@/components/document-scanner';
 import { MAX_UPLOAD_BYTES, SUPPORTED_MIME_TYPES } from '@/lib/projects';
 
 export type PickedFile = { name: string; uri: string; mimeType: string; size?: number };
@@ -34,13 +35,10 @@ export async function pickProjectFile(source: FileSource): Promise<{ file?: Pick
     const name = asset.fileName ?? `foto-${Date.now()}.jpg`;
     file = { name, uri: asset.uri, mimeType: asset.mimeType ?? mimeFromName(name), size: asset.fileSize };
   } else if (source === 'camera') {
-    const permission = await ImagePicker.requestCameraPermissionsAsync();
-    if (!permission.granted) return { error: 'Permissão de câmera negada.' };
-    const result = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 0.85 });
-    if (result.canceled || !result.assets[0]) return {};
-    const asset = result.assets[0];
-    const name = asset.fileName ?? `foto-${Date.now()}.jpg`;
-    file = { name, uri: asset.uri, mimeType: asset.mimeType ?? mimeFromName(name), size: asset.fileSize };
+    // Captura guiada (mesmo scanner Kofax do web), com câmera normal como alternativa dentro dele.
+    const scanned = await scanDocument();
+    if (!scanned.file) return { error: scanned.error };
+    file = scanned.file;
   } else {
     const result = await DocumentPicker.getDocumentAsync({ type: SUPPORTED_MIME_TYPES, multiple: false, copyToCacheDirectory: true });
     if (result.canceled || !result.assets[0]) return {};

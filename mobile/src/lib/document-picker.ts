@@ -1,6 +1,7 @@
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import { Alert } from 'react-native';
+import { scanDocument } from '@/components/document-scanner';
 
 export type PickedDocument = { uri: string; name: string; mimeType: string };
 
@@ -21,10 +22,9 @@ export async function pickDocument(): Promise<PickedDocument | undefined> {
         if (!result.canceled) { const item = result.assets[0]; resolve({ uri: item.uri, name: item.fileName || `foto-${Date.now()}.jpg`, mimeType: mime(item.mimeType || 'image/jpeg') }); } else resolve(undefined);
       } },
       { text: 'Câmera', onPress: async () => {
-        const permission = await ImagePicker.requestCameraPermissionsAsync();
-        if (!permission.granted) { Alert.alert('Permissão necessária', 'Permita acesso à câmera para fotografar um documento.'); return resolve(undefined); }
-        const result = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 1 });
-        if (!result.canceled) { const item = result.assets[0]; resolve({ uri: item.uri, name: `camera-${Date.now()}.jpg`, mimeType: mime(item.mimeType || 'image/jpeg') }); } else resolve(undefined);
+        const scanned = await scanDocument();
+        if (scanned.error) Alert.alert('Não foi possível digitalizar', scanned.error);
+        resolve(scanned.file && { uri: scanned.file.uri, name: scanned.file.name, mimeType: scanned.file.mimeType });
       } },
     ]);
   });
