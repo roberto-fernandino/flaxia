@@ -257,10 +257,10 @@ export function ExtractedValuesPanel({
         if (tf) {
           if (hasTableShapeMismatch(originalResult, tf)) {
             return (
-              <View key={key} style={[s.mismatch]}>
-                <ThemedText style={[s.label, { color: '#374151' }]}>{label}</ThemedText>
-                <ThemedText style={{ fontSize: 12, color: '#92400e' }}>Este campo está configurado como tabela, mas o valor armazenado não é tabular. Exibindo o valor bruto.</ThemedText>
-                <ThemedText selectable style={{ fontSize: 12, fontFamily: 'monospace', color: '#374151' }}>{String(originalResult[key] ?? '')}</ThemedText>
+              <View key={key} style={[s.mismatch, { borderColor: c.dark ? '#92400e' : '#fcd34d', backgroundColor: c.dark ? 'rgba(120,53,15,0.35)' : '#fffbeb' }]}>
+                <ThemedText style={[s.label, { color: c.text }]}>{label}</ThemedText>
+                <ThemedText style={{ fontSize: 12, color: c.dark ? '#fde68a' : '#92400e' }}>Este campo está configurado como tabela, mas o valor armazenado não é tabular. Exibindo o valor bruto.</ThemedText>
+                <ThemedText selectable style={{ fontSize: 12, fontFamily: 'monospace', color: c.text }}>{String(originalResult[key] ?? '')}</ThemedText>
               </View>
             );
           }
@@ -347,6 +347,6 @@ const s = StyleSheet.create({
   search: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderRadius: 8, paddingHorizontal: 10 },
   tableCard: { borderWidth: 1, borderRadius: 10, padding: 10, gap: 8 },
   tableRow: { borderWidth: 1, borderRadius: 8, padding: 8, gap: 6 },
-  mismatch: { borderWidth: 1, borderColor: '#fcd34d', backgroundColor: '#fffbeb', borderRadius: 8, padding: 8, gap: 6 },
+  mismatch: { borderWidth: 1, borderRadius: 8, padding: 8, gap: 6 },
   pagination: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 10 },
 });

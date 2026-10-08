@@ -326,7 +326,7 @@ export function ProcessResultScreen() {
                 return (
                   <Pressable key={t.id} onPress={() => setActiveTab(t.id)} style={[s.tab, active && { backgroundColor: c.surface, borderColor: 'rgba(34,211,238,0.7)' }]}>
                     <View style={[s.tabDot, { backgroundColor: active ? '#06b6d4' : '#d1d5db' }]} />
-                    <ThemedText numberOfLines={1} style={{ fontSize: 13, fontWeight: '600', color: active ? '#0e7490' : c.textMuted }}>{t.label}</ThemedText>
+                    <ThemedText numberOfLines={1} style={{ fontSize: 13, fontWeight: '600', color: active ? (c.dark ? '#67e8f9' : '#0e7490') : c.textMuted }}>{t.label}</ThemedText>
                   </Pressable>
                 );
               })}
