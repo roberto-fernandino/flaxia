@@ -19,6 +19,7 @@ import { type Field, type ProcessingJob, ProcessingJobsStatus } from '@/lib/engi
 import type { ClassDocument } from '@/lib/projects';
 import { resultApi } from '@/lib/result-api';
 import { AuditTimeline } from './audit-timeline';
+import { DocumentClassControl } from './document-class-control';
 import { ResultDocumentViewer } from './document-viewer';
 import { ExportSheet } from './export-sheet';
 import { ExtractedValuesPanel } from './extracted-values';
@@ -102,6 +103,45 @@ export function ProcessResultScreen() {
     return classes.find((d) => String(d.documentId).toLowerCase() === String(id).toLowerCase());
   }, [classes, job?.documentId]);
   const documentFields = useMemo(() => (relatedDocument?.fields ?? []) as Field[], [relatedDocument]);
+
+  // Classe do documento: só as classes do mesmo projeto; trocar não reprocessa.
+  type ClassOptions = Awaited<ReturnType<typeof resultApi.documentClassOptions>>['data'];
+  const [classOptions, setClassOptions] = useState<ClassOptions>(undefined);
+  const [savingClass, setSavingClass] = useState(false);
+  const loadClassOptions = useCallback(async () => {
+    try {
+      const r = await resultApi.documentClassOptions(token, currentJobId);
+      setClassOptions(r.data);
+    } catch {
+      setClassOptions(undefined);
+    }
+  }, [currentJobId, token]);
+  useEffect(() => { setClassOptions(undefined); void loadClassOptions(); }, [loadClassOptions]);
+  const projectClasses = useMemo(() => {
+    const fromJob = classOptions?.classes ?? [];
+    if (fromJob.length > 0) return fromJob;
+    return relatedDocument ? [{ documentId: relatedDocument.documentId, displayName: relatedDocument.displayName }] : [];
+  }, [classOptions?.classes, relatedDocument]);
+  const currentDocumentId = classOptions?.documentId || relatedDocument?.documentId || '';
+
+  const saveDocumentClass = async (documentId: string) => {
+    setFeedback(null);
+    setSavingClass(true);
+    try {
+      const classifierId = classOptions?.classifierId;
+      if (!classifierId) throw new Error('The document class is not linked to a project');
+      await resultApi.updateDocumentClass(token, currentJobId, { classifierId, documentId });
+      await Promise.all([loadJob(), loadClassOptions()]);
+      setAuditRefresh((n) => n + 1);
+      setFeedback({ type: 'success', message: 'Classe do documento atualizada.' });
+      return true;
+    } catch {
+      setFeedback({ type: 'error', message: 'Não foi possível atualizar a classe do documento.' });
+      return false;
+    } finally {
+      setSavingClass(false);
+    }
+  };
 
   const showValidation = (job?.isValidating ?? true) !== false || batchJobs.some((j) => j.isValidating !== false && j.status === ProcessingJobsStatus.WaitingValidation);
   const tabs: { id: Tab; label: string }[] = [
@@ -365,6 +405,18 @@ export function ProcessResultScreen() {
               </Pressable>
             )}
 
+            {tab === 'validation' && showValidation && projectClasses.length > 0 && (
+              <View style={s.documentClass}>
+                <DocumentClassControl
+                  classes={projectClasses}
+                  currentDocumentId={currentDocumentId}
+                  disabled={isJobValidated}
+                  saving={savingClass}
+                  onSave={saveDocumentClass}
+                />
+              </View>
+            )}
+
             {tab === 'validation' && showValidation ? (
               // Painéis como no web: visualizador fixo + campos rolando (ordem trocável).
               <View style={[s.split, { flexDirection: fieldsFirst ? 'column-reverse' : 'column' }]} onTouchStart={() => { metrics.current.taps += 1; }}>
@@ -414,6 +466,7 @@ const s = StyleSheet.create({
   action: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8 },
   feedback: { marginHorizontal: 16, marginTop: 10, borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8 },
   content: { padding: 16, gap: 14, paddingBottom: 140 },
+  documentClass: { paddingHorizontal: 16, paddingTop: 10 },
   split: { flex: 1, paddingHorizontal: 16, paddingTop: 10, gap: 10 },
   splitViewer: { flexShrink: 0 },
   fieldsContent: { flexGrow: 1, paddingBottom: 140 },
