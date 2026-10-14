@@ -52,6 +52,7 @@ export function ProcessResultScreen() {
   const [marking, setMarking] = useState<'validated' | 'rejected' | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
   const [fieldsFirst, setFieldsFirst] = useState(false);
+  const [fieldsExpanded, setFieldsExpanded] = useState(false);
   const [auditRefresh, setAuditRefresh] = useState(0);
   const ocrRefreshTried = useRef(new Set<string>());
 
@@ -242,7 +243,7 @@ export function ProcessResultScreen() {
   }, [tab, currentJobId, token]);
 
   const [statusBg, statusFg] = statusColors(String(job?.status ?? ''), c.dark);
-  const viewerHeight = Math.max(260, Math.round(screenH * 0.42));
+  const viewerHeight = Math.max(220, Math.round(screenH * (fieldsExpanded ? 0.30 : 0.42)));
 
   const fieldsScrollRef = useRef<ScrollView>(null);
   const scrollFieldsTo = useCallback((y: number) => fieldsScrollRef.current?.scrollTo({ y, animated: true }), []);
@@ -366,15 +367,20 @@ export function ProcessResultScreen() {
             )}
 
             {tab === 'validation' && showValidation ? (
-              // Painéis como no web: visualizador fixo + campos rolando (ordem trocável).
-              <View style={[s.split, { flexDirection: fieldsFirst ? 'column-reverse' : 'column' }]} onTouchStart={() => { metrics.current.taps += 1; }}>
-                <View style={s.splitViewer}>{viewer}</View>
-                <ScrollView ref={fieldsScrollRef} style={{ flex: 1 }} contentContainerStyle={s.fieldsContent} keyboardShouldPersistTaps="handled">
+              <View style={s.split} onTouchStart={() => { metrics.current.taps += 1; }}>
+                <View style={[s.splitViewer, { height: viewerHeight }]}>{viewer}</View>
+                <View style={[s.fieldsSheet, { flex: fieldsExpanded ? 1 : undefined, height: fieldsExpanded ? undefined : 52, borderColor: c.border, backgroundColor: c.surface }]}>
+                  <Pressable accessibilityRole="button" accessibilityLabel={fieldsExpanded ? 'Fechar campos' : 'Abrir campos'} onPress={() => setFieldsExpanded((v) => !v)} style={[s.sheetHandle, { borderColor: c.border }]}>
+                    <View style={[s.handlePill, { backgroundColor: c.textMuted }]} />
+                    <ThemedText style={{ color: c.text, fontSize: 13, fontWeight: '700' }}>{fieldsExpanded ? '⌄ Fechar campos' : '⌃ Campos extraídos'}</ThemedText>
+                  </Pressable>
+                  {fieldsExpanded && <ScrollView ref={fieldsScrollRef} style={{ flex: 1 }} contentContainerStyle={s.fieldsContent} keyboardShouldPersistTaps="handled">
                   {/* Toque fora de um campo deseleciona (inputs e botões internos capturam o próprio toque). */}
                   <Pressable onPress={() => { Keyboard.dismiss(); setSelectedKey(null); }} style={{ flexGrow: 1 }}>
                     {fields}
                   </Pressable>
-                </ScrollView>
+                  </ScrollView>}
+                </View>
               </View>
             ) : (
             <ScrollView contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
@@ -414,7 +420,10 @@ const s = StyleSheet.create({
   action: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8 },
   feedback: { marginHorizontal: 16, marginTop: 10, borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8 },
   content: { padding: 16, gap: 14, paddingBottom: 140 },
-  split: { flex: 1, paddingHorizontal: 16, paddingTop: 10, gap: 10 },
+  split: { flex: 1, paddingHorizontal: 16, paddingTop: 10, gap: 8 },
   splitViewer: { flexShrink: 0 },
+  fieldsSheet: { flexShrink: 0, borderWidth: 1, borderRadius: 16, overflow: 'hidden' },
+  sheetHandle: { height: 50, alignItems: 'center', justifyContent: 'center', gap: 3, borderBottomWidth: StyleSheet.hairlineWidth },
+  handlePill: { width: 36, height: 4, borderRadius: 2, opacity: 0.55 },
   fieldsContent: { flexGrow: 1, paddingBottom: 140 },
 });

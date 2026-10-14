@@ -2,12 +2,13 @@ import { Image } from 'expo-image';
 import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import { ReactNode, useEffect, useState } from 'react';
-import { ActivityIndicator, Platform, ScrollView, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Keyboard, Platform, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { useAuth } from '@/auth/AuthContext';
 import { ThemedText } from '@/components/themed-text';
+import { ResultDocumentViewer } from '@/components/result/document-viewer';
 import { API_BASE_URL } from '@/lib/api';
-import { ProjectDocument, errorMessage } from '@/lib/projects';
+import { ProjectDocument, errorMessage, isUnclassifiedDocument } from '@/lib/projects';
 import { Button, DocumentSkeleton, palette, useProjectColors } from './ui';
 import type { ProjectWorkspace } from './use-workspace';
 
@@ -41,11 +42,14 @@ export function ViewerPanel({ ws }: { ws: ProjectWorkspace }) {
   const skeleton = ws.isEarlyFlow ? { fileName: ws.flow.fileName, hint: ws.flowHint } : ws.pendingUpload ? { fileName: ws.pendingUpload, hint: undefined } : null;
   const title = skeleton?.fileName ?? doc?.fileName ?? 'Visualizador';
   const docKey = doc ? `${doc.projectDocumentId}:${doc.processingJobId ?? ''}` : null;
+  const { height: screenH } = useWindowDimensions();
+  // Com job, usa o mesmo visualizador da Validação: destaca os valores extraídos no documento.
+  const highlightJobId = doc?.processingJobId && !isUnclassifiedDocument(doc) ? doc.processingJobId : null;
 
   useEffect(() => {
     setLocalUri(null);
     setFileError(false);
-    if (!doc || !token || skeleton) return;
+    if (!doc || !token || skeleton || highlightJobId) return;
     let cancelled = false;
     setLoadingFile(true);
     downloadToCache(doc, token)
@@ -54,7 +58,7 @@ export function ViewerPanel({ ws }: { ws: ProjectWorkspace }) {
       .finally(() => { if (!cancelled) setLoadingFile(false); });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [docKey, token, !!skeleton]);
+  }, [docKey, token, !!skeleton, !!highlightJobId]);
 
   const shareDocument = async () => {
     if (!doc || !token) return;
@@ -78,7 +82,28 @@ export function ViewerPanel({ ws }: { ws: ProjectWorkspace }) {
 
   let preview: ReactNode = null;
   if (doc) {
-    if (loadingFile) {
+    if (highlightJobId) {
+      preview = (
+        <ResultDocumentViewer
+          key={highlightJobId}
+          processJobId={highlightJobId}
+          token={token}
+          fileType={doc.mimeType}
+          fileName={doc.fileName}
+          ocrData={ws.ocrData}
+          displayValues={ws.highlightValues}
+          fieldColors={ws.fieldColors}
+          selectedFieldKey={ws.selectedFieldKey}
+          scrollToken={0}
+          readOnly
+          documentFields={ws.documentFields}
+          onFieldSelect={ws.setSelectedFieldKey}
+          onDeselect={() => { Keyboard.dismiss(); ws.setSelectedFieldKey(null); }}
+          onSelectedText={() => undefined}
+          height={Math.max(320, Math.round(screenH * 0.62))}
+        />
+      );
+    } else if (loadingFile) {
       preview = (
         <View style={[s.frame, s.placeholder, { borderColor: c.border, backgroundColor: c.surfaceAlt }]}>
           <ActivityIndicator color={palette.primary} />
@@ -121,7 +146,11 @@ export function ViewerPanel({ ws }: { ws: ProjectWorkspace }) {
       ) : (
         <>
           {preview}
-          <Button variant="secondary" icon="⬆︎" label={sharing ? 'Preparando…' : 'Compartilhar documento'} loading={sharing} onPress={() => void shareDocument()} />
+          {highlightJobId ? (
+            ws.selectedFieldKey && <ThemedText style={[s.hint, { color: c.textMuted }]}>Toque fora do destaque para ver todos os campos.</ThemedText>
+          ) : (
+            <Button variant="secondary" icon="⬆︎" label={sharing ? 'Preparando…' : 'Compartilhar documento'} loading={sharing} onPress={() => void shareDocument()} />
+          )}
           {doc.classificationStatus === 'unclassified' && (
             <ThemedText style={[s.hint, { color: palette.warning }]}>Crie uma classe na aba Classe e classifique este documento.</ThemedText>
           )}

@@ -1,6 +1,8 @@
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '@/auth/AuthContext';
+import { buildFieldColorsMap } from '@/lib/engine/fieldTypeColors';
+import { flattenResultToDisplayValues } from '@/lib/engine/tableFieldValues';
 import {
   ClassDocument,
   ClassDraft,
@@ -12,6 +14,7 @@ import {
   errorStatus,
   filterVisibleClasses,
   isDocumentProcessingStuck,
+  isUnclassifiedDocument,
   projectsApi,
 } from '@/lib/projects';
 import type { ClassEdit } from './manage-classes';
@@ -57,7 +60,8 @@ export function useProjectWorkspace(classifierId: string) {
   const [toast, setToast] = useState<Toast | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [removedIds, setRemovedIds] = useState<Set<string>>(() => new Set());
-  const [jobResult, setJobResult] = useState<{ jobId: string; result: Record<string, unknown> | null } | null>(null);
+  const [jobResult, setJobResult] = useState<{ jobId: string; result: Record<string, unknown> | null; ocrData: unknown } | null>(null);
+  const [selectedFieldKey, setSelectedFieldKey] = useState<string | null>(null);
   const [flow, setFlow] = useState<FlowState>(idle);
   const [pendingUpload, setPendingUpload] = useState<string | null>(null);
   const [busy, setBusy] = useState<Record<string, boolean>>({});
@@ -147,15 +151,15 @@ export function useProjectWorkspace(classifierId: string) {
 
   const processJobId = selectedDocument?.processingJobId ?? null;
   const jobStatusKey = `${selectedDocument?.jobStatus ?? ''}-${selectedDocument?.updatedAt ?? ''}`;
+  // Sempre busca o job: além do resultado, traz o OCR usado no destaque do visualizador.
   useEffect(() => {
-    if (!processJobId || selectedDocument?.jobResult) return;
+    if (!processJobId) return;
     let cancelled = false;
     projectsApi
       .job(token, processJobId)
-      .then((r) => { if (!cancelled) setJobResult({ jobId: processJobId, result: r.data?.result ?? null }); })
+      .then((r) => { if (!cancelled) setJobResult({ jobId: processJobId, result: r.data?.result ?? null, ocrData: r.data?.ocrData ?? null }); })
       .catch(() => undefined);
     return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [processJobId, jobStatusKey, token]);
 
   const originalResult: Record<string, unknown> | null =
@@ -163,7 +167,25 @@ export function useProjectWorkspace(classifierId: string) {
     (jobResult && jobResult.jobId === processJobId ? jobResult.result : null) ??
     null;
 
+  const currentJob = jobResult && jobResult.jobId === processJobId ? jobResult : null;
+  const ocrData = currentJob?.ocrData ?? null;
+
+  // Campo selecionado compartilhado entre o painel de campos e o visualizador (como no web).
+  useEffect(() => { setSelectedFieldKey(null); }, [selectedDocumentId, processJobId]);
+
   const visibleClasses = useMemo(() => filterVisibleClasses(classes), [classes]);
+  const selectedIsUnclassified = !selectedDocument || isUnclassifiedDocument(selectedDocument);
+  const documentFields = useMemo(
+    () => (selectedIsUnclassified ? [] : (classes.find((d) => d.documentId === selectedDocument?.documentId)?.fields ?? [])),
+    [classes, selectedDocument?.documentId, selectedIsUnclassified],
+  );
+  // Valores originais destacados no documento — células de tabela viram `campo[linha].coluna`.
+  const highlightValues = useMemo(
+    () => (selectedIsUnclassified ? {} : flattenResultToDisplayValues(originalResult, documentFields)),
+    [originalResult, documentFields, selectedIsUnclassified],
+  );
+  const fieldColors = useMemo(() => buildFieldColorsMap(documentFields, Object.keys(highlightValues)), [documentFields, highlightValues]);
+
   const linkedIds = useMemo(() => new Set(classifier?.models?.map((m) => m.documentId) ?? []), [classifier]);
   const linkedDocuments = useMemo(() => visibleClasses.filter((d) => linkedIds.has(d.documentId)), [visibleClasses, linkedIds]);
   const availableDocuments = useMemo(() => visibleClasses.filter((d) => !linkedIds.has(d.documentId)), [visibleClasses, linkedIds]);
@@ -494,6 +516,12 @@ export function useProjectWorkspace(classifierId: string) {
     selectedDocumentId,
     selectDocument,
     originalResult,
+    ocrData,
+    documentFields,
+    highlightValues,
+    fieldColors,
+    selectedFieldKey,
+    setSelectedFieldKey,
     linkedDocuments,
     availableDocuments,
     toast,

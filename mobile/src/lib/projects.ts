@@ -172,7 +172,7 @@ export const projectsApi = {
   updateClass: (token: T, body: Record<string, unknown>) =>
     apiRequest('/engine/update_document', { method: 'PUT', body: json(body) }, tk(token)),
   job: (token: T, processJobId: string) =>
-    apiRequest<{ result?: Record<string, unknown> | null }>(`/engine/processing_jobs/${processJobId}`, {}, tk(token)),
+    apiRequest<{ result?: Record<string, unknown> | null; ocrData?: unknown }>(`/engine/processing_jobs/${processJobId}`, {}, tk(token)),
 };
 
 /** Classe global de sistema (ver `UNCLASSIFIED_DOCUMENT_ID` no backend). */

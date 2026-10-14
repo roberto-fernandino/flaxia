@@ -1,7 +1,7 @@
 import { createContext, PropsWithChildren, useContext, useEffect, useMemo, useState } from 'react';
 import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
-import { login } from '@/lib/api';
+import { login, setUnauthorizedHandler } from '@/lib/api';
 
 type AuthContextValue = { token: string | null; signIn: (email: string, password: string) => Promise<void>; signInWithToken: (nextToken: string) => Promise<void>; signOut: () => void };
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -26,7 +26,16 @@ export function AuthProvider({ children }: PropsWithChildren) {
   const [token, setToken] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
   useEffect(() => {
-    readToken().then(setToken).catch(() => undefined).finally(() => setReady(true));
+    const timeout = setTimeout(() => setReady(true), 3000);
+    readToken().then(setToken).catch(() => undefined).finally(() => {
+      clearTimeout(timeout);
+      setReady(true);
+    });
+    return () => clearTimeout(timeout);
+  }, []);
+  useEffect(() => {
+    setUnauthorizedHandler(() => { setToken(null); void clearToken().catch(() => undefined); });
+    return () => setUnauthorizedHandler(null);
   }, []);
   const value = useMemo(() => ({
     token,

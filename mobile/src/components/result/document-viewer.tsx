@@ -105,7 +105,6 @@ export function ResultDocumentViewer({
   const [error, setError] = useState<string | null>(null);
   const [pagesInfo, setPagesInfo] = useState<PageInfo[] | null>(null);
   const [textWords, setTextWords] = useState<Record<string, OcrWord[]>>({});
-  const [zoom, setZoom] = useState(1);
   const [selectMode, setSelectMode] = useState(false);
   const [sharing, setSharing] = useState(false);
 
@@ -210,8 +209,6 @@ export function ResultDocumentViewer({
     send({ type: 'highlights', pages, scroll });
   }, [pageGeometry, pagesInfo, displayValues, fieldColors, selectedFieldKey, scrollToken, documentFields, send]);
 
-  useEffect(() => { send({ type: 'zoom', zoom }); }, [zoom, send]);
-
   const canSelectText = !!selectedFieldKey && !readOnly;
   useEffect(() => {
     if (!canSelectText) setSelectMode(false);
@@ -268,10 +265,7 @@ export function ResultDocumentViewer({
     <View style={[s.wrap, { height, borderColor: c.border, backgroundColor: c.surface }]}>
       <View style={[s.toolbar, { borderColor: c.border }]}>
         <ThemedText numberOfLines={1} style={{ flex: 1, fontSize: 13, fontWeight: '600', color: c.text }}>Visualizador de Documento</ThemedText>
-        <Pressable onPress={() => setZoom((z) => Math.max(0.5, z - 0.25))} disabled={zoom <= 0.5} style={[s.tool, { borderColor: c.border, opacity: zoom <= 0.5 ? 0.4 : 1 }]}><ThemedText style={{ color: c.text }}>−</ThemedText></Pressable>
-        <ThemedText style={{ width: 40, textAlign: 'center', fontSize: 11, color: c.textMuted }}>{Math.round(zoom * 100)}%</ThemedText>
-        <Pressable onPress={() => setZoom((z) => Math.min(3, z + 0.25))} disabled={zoom >= 3} style={[s.tool, { borderColor: c.border, opacity: zoom >= 3 ? 0.4 : 1 }]}><ThemedText style={{ color: c.text }}>+</ThemedText></Pressable>
-        <Pressable onPress={() => setZoom(1)} disabled={zoom === 1} style={[s.tool, { borderColor: c.border, opacity: zoom === 1 ? 0.4 : 1 }]}><ThemedText style={{ fontSize: 11, color: c.text }}>Ajustar</ThemedText></Pressable>
+        <ThemedText style={{ fontSize: 11, color: c.textMuted }}>Pinça para ampliar</ThemedText>
         <Pressable onPress={() => void share()} disabled={!file || sharing} style={[s.tool, { borderColor: c.border, opacity: !file ? 0.4 : 1 }]} accessibilityLabel="Compartilhar documento"><ThemedText style={{ fontSize: 13, color: c.text }}>⬆︎</ThemedText></Pressable>
       </View>
       {canSelectText && (

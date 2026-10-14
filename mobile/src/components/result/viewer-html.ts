@@ -201,11 +201,28 @@ export const VIEWER_HTML = `<!doctype html>
   }
 
   function setZoom(z) {
-    zoom = z;
+    zoom = Math.max(0.6, Math.min(3, z));
     pages.forEach(sizePage);
     if (kind === 'pdf') pages.reduce(function (c, p) { return c.then(function () { return renderPdfPage(p); }); }, Promise.resolve());
     if (lastHighlights) drawHighlights(Object.assign({}, lastHighlights, { scroll: false }));
   }
+
+  var pinchStart = 0;
+  document.addEventListener('touchstart', function (e) {
+    if (selectMode || e.touches.length !== 2) return;
+    var dx = e.touches[0].clientX - e.touches[1].clientX;
+    var dy = e.touches[0].clientY - e.touches[1].clientY;
+    pinchStart = Math.hypot(dx, dy) / zoom;
+  }, { passive: true });
+  document.addEventListener('touchmove', function (e) {
+    if (selectMode || e.touches.length !== 2 || !pinchStart) return;
+    var dx = e.touches[0].clientX - e.touches[1].clientX;
+    var dy = e.touches[0].clientY - e.touches[1].clientY;
+    var next = Math.max(0.6, Math.min(3, Math.hypot(dx, dy) / pinchStart));
+    if (Math.abs(next - zoom) > 0.025) setZoom(next);
+    e.preventDefault();
+  }, { passive: false });
+  document.addEventListener('touchend', function (e) { if (e.touches.length < 2) pinchStart = 0; }, { passive: true });
 
   window.__rn = function (m) {
     if (m.type === 'theme') document.documentElement.style.setProperty('--bg', m.bg);

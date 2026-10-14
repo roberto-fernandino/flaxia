@@ -61,7 +61,8 @@ export function SchemaPanel({ ws }: { ws: ProjectWorkspace }) {
   const [showWizard, setShowWizard] = useState(false);
   const [showAutoCreate, setShowAutoCreate] = useState(false);
   const [showManage, setShowManage] = useState(false);
-  const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const selectedKey = ws.selectedFieldKey;
+  const setSelectedKey = ws.setSelectedFieldKey;
   const doc = ws.selectedDocument;
   const isSaving = !!ws.busy.classes;
   const isFlowActive = ws.flow.phase !== 'idle';
@@ -87,7 +88,6 @@ export function SchemaPanel({ ws }: { ws: ProjectWorkspace }) {
   useEffect(() => {
     setValues(null);
     setTables(null);
-    setSelectedKey(null);
   }, [doc?.projectDocumentId, doc?.processingJobId]);
 
   const displayValues = values ?? original;
@@ -135,11 +135,12 @@ export function SchemaPanel({ ws }: { ws: ProjectWorkspace }) {
             const pending = isExtracting && !value.trim();
             return (
               <View key={`${activeClass.documentId}-${key}-${idx}`} style={[s.fieldCard, { borderColor: selected ? palette.primary : c.border, backgroundColor: selected ? c.selectedBg : 'transparent' }]}>
-                <View style={s.labelRow}>
+                <Pressable style={s.labelRow} onPress={() => setSelectedKey(selected ? null : key)}>
+                  {ws.fieldColors[key] && <View style={[s.colorDot, { backgroundColor: ws.fieldColors[key] }]} />}
                   <ThemedText style={{ color: palette.primary, fontSize: 12 }}>{fieldTypeOption(field.fieldType).icon}</ThemedText>
-                  <ThemedText style={[s.fieldLabel, { color: c.text }]}>{field.displayName ?? field.fieldName}</ThemedText>
+                  <ThemedText style={[s.fieldLabel, { color: c.text, flexShrink: 1 }]}>{field.displayName ?? field.fieldName}</ThemedText>
                   {modified && <ThemedText style={{ fontSize: 10, color: palette.primary }}>(modificado)</ThemedText>}
-                </View>
+                </Pressable>
                 {pending ? (
                   <View style={[s.shimmer, { height: 18, width: '75%', backgroundColor: c.border }]} />
                 ) : (
@@ -150,12 +151,11 @@ export function SchemaPanel({ ws }: { ws: ProjectWorkspace }) {
                     placeholder="—"
                     placeholderTextColor={c.textMuted}
                     onFocus={() => setSelectedKey(key)}
-                    onBlur={() => setSelectedKey((k) => (k === key ? null : k))}
                     onChangeText={(v) => setValues((prev) => ({ ...(prev ?? original), [key]: v }))}
                     style={[s.valueInput, { borderColor: selected ? palette.primary : c.border, color: c.text, backgroundColor: c.inputBg, opacity: readOnly ? 0.7 : 1 }]}
                   />
                 )}
-                {selected && !readOnly && <ThemedText style={{ fontSize: 10, color: palette.primary }}>Edite o valor diretamente aqui.</ThemedText>}
+                {selected && <ThemedText style={{ fontSize: 10, color: palette.primary }}>Destacado na aba Documento.{readOnly ? '' : ' Edite o valor diretamente aqui.'}</ThemedText>}
               </View>
             );
           })
@@ -210,6 +210,7 @@ const s = StyleSheet.create({
   shimmer: { borderRadius: 6, alignSelf: 'center', opacity: 0.6 },
   fieldCard: { borderWidth: 1, borderRadius: 10, padding: 10, gap: 6 },
   labelRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  colorDot: { width: 10, height: 10, borderRadius: 5 },
   fieldLabel: { fontSize: 13, fontWeight: '600' },
   valueInput: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, fontSize: 14 },
   rowBetween: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },

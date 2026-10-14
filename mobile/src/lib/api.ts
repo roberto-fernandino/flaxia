@@ -13,6 +13,17 @@ export class ApiError<T = unknown> extends Error {
 
 export const API_BASE_URL = API_URL;
 
+/** Chamado quando uma requisição autenticada recebe 401 (token inválido/expirado). */
+let unauthorizedHandler: (() => void) | null = null;
+
+export function setUnauthorizedHandler(handler: (() => void) | null) {
+  unauthorizedHandler = handler;
+}
+
+export function notifyUnauthorized() {
+  unauthorizedHandler?.();
+}
+
 export async function apiRequest<T>(path: string, options: RequestInit = {}, token?: string) {
   const response = await fetch(`${API_URL}${path}`, {
     ...options,
@@ -23,6 +34,7 @@ export async function apiRequest<T>(path: string, options: RequestInit = {}, tok
     },
   });
   const body = (await response.json().catch(() => ({}))) as ApiEnvelope<T>;
+  if (response.status === 401 && token) notifyUnauthorized();
   if (!response.ok) throw new ApiError(body.message ?? `Request failed (${response.status})`, response.status, body);
   return body;
 }
