@@ -14,6 +14,14 @@ export const resultApi = {
   classes: (token: T) => apiRequest<ClassDocument[]>('/engine/documents', {}, tk(token)),
   updateResult: (token: T, id: string, result: Record<string, unknown>) =>
     apiRequest(`/engine/processing_jobs/${id}/result`, { method: 'PUT', body: json({ result }) }, tk(token)),
+  documentClassOptions: (token: T, id: string) =>
+    apiRequest<{ documentId?: string | null; classifierId?: string | null; classes: { documentId: string; displayName: string }[] }>(
+      `/engine/processing_jobs/${id}/document_class_options`,
+      {},
+      tk(token),
+    ),
+  updateDocumentClass: (token: T, id: string, body: { classifierId: string; documentId: string }) =>
+    apiRequest<boolean>(`/engine/processing_jobs/${id}/document_class`, { method: 'PUT', body: json(body) }, tk(token)),
   markValidated: (token: T, id: string) =>
     apiRequest(`/engine/processing_jobs/${id}/mark_validated`, { method: 'PATCH' }, tk(token)),
   markRejected: (token: T, id: string) =>
