@@ -8,18 +8,19 @@ import { WebView, type WebViewMessageEvent } from 'react-native-webview';
 /**
  * Captura guiada com o mesmo scanner do web (Tungsten/Kofax HTML5 SDK +
  * detecção de página em `public/scanner/` do frontend). A página roda num
- * WebView e devolve o JPEG aceito como data URL via `ReactNativeWebView`.
+ * WebView e devolve as páginas recortadas do lote como data URLs via
+ * `ReactNativeWebView` (`dataUrls`; versões antigas mandam só `dataUrl`).
  */
 const FRONTEND_URL = (process.env.EXPO_PUBLIC_FRONTEND_URL ?? 'https://flaxia.com.br').replace(/\/$/, '');
 const SCANNER_URL = `${FRONTEND_URL}/scanner/index.html?lang=pt`;
 const SCANNER_ORIGIN = new URL(FRONTEND_URL).origin;
 
 export type ScannedFile = { name: string; uri: string; mimeType: string; size?: number };
-type Outcome = { file?: ScannedFile; error?: string };
+type Outcome = { files?: ScannedFile[]; error?: string };
 
 let present: ((resolve: (outcome: Outcome) => void) => void) | null = null;
 
-/** Abre o scanner. Resolve sem arquivo quando o usuário fecha sem capturar. */
+/** Abre o scanner. Resolve sem arquivos quando o usuário fecha sem capturar. */
 export async function scanDocument(): Promise<Outcome> {
   const permission = await ImagePicker.requestCameraPermissionsAsync();
   if (!permission.granted) return { error: 'Permissão de câmera negada.' };
@@ -28,9 +29,10 @@ export async function scanDocument(): Promise<Outcome> {
   return new Promise((resolve) => open(resolve));
 }
 
-function saveDataUrl(dataUrl: string): ScannedFile {
+const isJpeg = (value: unknown): value is string => typeof value === 'string' && value.startsWith('data:image/jpeg;base64,');
+
+function saveDataUrl(dataUrl: string, name: string): ScannedFile {
   const base64 = dataUrl.slice(dataUrl.indexOf(',') + 1);
-  const name = `scan-${Date.now()}.jpg`;
   const file = new File(Paths.cache, name);
   file.create({ overwrite: true });
   file.write(base64, { encoding: 'base64' });
@@ -52,11 +54,14 @@ export function DocumentScannerHost() {
 
   const onMessage = (event: WebViewMessageEvent) => {
     if (new URL(event.nativeEvent.url).origin !== SCANNER_ORIGIN) return;
-    let message: { type?: string; dataUrl?: unknown };
+    let message: { type?: string; dataUrl?: unknown; dataUrls?: unknown };
     try { message = JSON.parse(event.nativeEvent.data); } catch { return; }
     if (message.type === 'flaxia-scan-close') return finish({});
-    if (message.type !== 'flaxia-scan' || typeof message.dataUrl !== 'string' || !message.dataUrl.startsWith('data:image/jpeg;base64,')) return;
-    try { finish({ file: saveDataUrl(message.dataUrl) }); } catch { finish({ error: 'Não foi possível salvar o documento digitalizado.' }); }
+    if (message.type !== 'flaxia-scan') return;
+    const pages = (Array.isArray(message.dataUrls) ? message.dataUrls : [message.dataUrl]).filter(isJpeg);
+    if (!pages.length) return;
+    const stamp = Date.now();
+    try { finish({ files: pages.map((page, index) => saveDataUrl(page, `scan-${stamp}-${index + 1}.jpg`)) }); } catch { finish({ error: 'Não foi possível salvar o documento digitalizado.' }); }
   };
 
   return (

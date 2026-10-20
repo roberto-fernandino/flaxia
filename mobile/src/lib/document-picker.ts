@@ -24,7 +24,8 @@ export async function pickDocument(): Promise<PickedDocument | undefined> {
       { text: 'Câmera', onPress: async () => {
         const scanned = await scanDocument();
         if (scanned.error) Alert.alert('Não foi possível digitalizar', scanned.error);
-        resolve(scanned.file && { uri: scanned.file.uri, name: scanned.file.name, mimeType: scanned.file.mimeType });
+        const file = scanned.files?.[0];
+        resolve(file && { uri: file.uri, name: file.name, mimeType: file.mimeType });
       } },
     ]);
   });
