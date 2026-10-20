@@ -50,3 +50,5 @@ export async function pickProjectFile(source: FileSource): Promise<{ file?: Pick
 }
 
 export const readBase64 = (file: PickedFile) => new File(file.uri).base64();
+/** Tamanho em bytes; quando o seletor não informa, lê do arquivo local. */
+export const fileSize = (file: PickedFile) => file.size ?? new File(file.uri).size ?? 0;
