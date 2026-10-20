@@ -5,7 +5,7 @@ import { useAuth } from '@/auth/AuthContext';
 import { Screen, Card } from '@/components/screen';
 import { ThemedText } from '@/components/themed-text';
 import { useTheme } from '@/hooks/use-theme';
-import { FileSource, PickedFile, pickProjectFile, readBase64 } from '@/components/projects/pick-file';
+import { FileSource, PickedFile, fileSize, pickProjectFile, readBase64 } from '@/components/projects/pick-file';
 import { apiRequest } from '@/lib/api';
 import { ClassifierSummary, MAX_UPLOAD_BYTES, documentTypeFromMime, errorMessage, processApi, projectsApi } from '@/lib/projects';
 
@@ -54,7 +54,7 @@ export default function ProcessScreen() {
 
   async function processFiles() {
     if (!selected.length || !project || loadingProjects || busy) return;
-    const totalBytes = selected.reduce((sum, file) => sum + (file.size ?? 0), 0);
+    const totalBytes = selected.reduce((sum, file) => sum + fileSize(file), 0);
     if (totalBytes > MAX_UPLOAD_BYTES) {
       setStatus({ kind: 'error', text: `Envio excede o limite total de ${MAX_UPLOAD_BYTES / (1024 * 1024)} MB.` });
       return;
