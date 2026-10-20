@@ -97,6 +97,35 @@ type T = string | null | undefined;
 const json = (body: unknown) => JSON.stringify(body);
 const tk = (token: T) => token ?? undefined;
 
+export type ProcessDocumentType = 'png' | 'jpeg' | 'webp' | 'gif' | 'pdf';
+export type ProcessDocumentsFile = { documentType: ProcessDocumentType; base64Document: string; fileName?: string };
+export type ProcessingJobSummary = { processJobId?: string; process_job_id?: string; processingJobBatchId?: string | null };
+
+/** Mesmo mapeamento de `getDocumentType` do web (app/process/utils.ts). */
+export function documentTypeFromMime(mimeType: string): ProcessDocumentType {
+  const type = mimeType.toLowerCase();
+  if (type.includes('png')) return 'png';
+  if (type.includes('jpeg') || type.includes('jpg')) return 'jpeg';
+  if (type.includes('webp')) return 'webp';
+  if (type.includes('gif')) return 'gif';
+  return 'pdf';
+}
+
+/** Fluxo de produção (botão "Novo lote" do web): cria processing jobs, não documentos de designer. */
+export const processApi = {
+  companyProjects: (token: T, companyId: string) =>
+    apiRequest<ClassifierSummary[]>(`/users/company/${companyId}/projects`, {}, tk(token)),
+  processDocuments: (token: T, classifierId: string, files: ProcessDocumentsFile[]) =>
+    apiRequest<{ jobs?: ProcessingJobSummary[] }>(
+      '/engine/process_documents',
+      {
+        method: 'POST',
+        body: json({ isMultiple: files.length > 1, documentId: null, useClassifier: true, classifierId, files }),
+      },
+      tk(token),
+    ),
+};
+
 export const projectsApi = {
   list: (token: T) => apiRequest<ClassifierSummary[]>('/engine/classifiers', {}, tk(token)),
   create: (token: T, name: string) =>

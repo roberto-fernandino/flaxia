@@ -6,7 +6,8 @@ import { Screen, Card } from '@/components/screen';
 import { ThemedText } from '@/components/themed-text';
 import { useTheme } from '@/hooks/use-theme';
 import { FileSource, PickedFile, pickProjectFile, readBase64 } from '@/components/projects/pick-file';
-import { ClassifierSummary, errorMessage, projectsApi } from '@/lib/projects';
+import { apiRequest } from '@/lib/api';
+import { ClassifierSummary, MAX_UPLOAD_BYTES, documentTypeFromMime, errorMessage, processApi, projectsApi } from '@/lib/projects';
 
 const SOURCES: { source: FileSource; label: string; icon: string }[] = [
   { source: 'camera', label: 'Câmera', icon: '📷' },
@@ -25,11 +26,16 @@ export default function ProcessScreen() {
   const [selected, setSelected] = useState<PickedFile[]>([]);
   const [status, setStatus] = useState<Status>();
   const [busy, setBusy] = useState(false);
-  const [sentTo, setSentTo] = useState<string>();
+  const [sent, setSent] = useState(false);
 
   useFocusEffect(useCallback(() => {
     setLoadingProjects(true);
-    projectsApi.list(token)
+    // Mesma lista do "Novo lote" do web: projetos da empresa; sem empresa, os projetos do usuário.
+    apiRequest<{ company?: { companyId?: string; company_id?: string } }>('/users/profile', {}, token ?? undefined)
+      .then((p) => {
+        const companyId = p.data?.company?.companyId ?? p.data?.company?.company_id;
+        return companyId ? processApi.companyProjects(token, companyId) : projectsApi.list(token);
+      })
       .then((r) => {
         const list = r.data ?? [];
         setProjects(list);
@@ -43,28 +49,32 @@ export default function ProcessScreen() {
     setStatus(undefined);
     const result = await pickProjectFile(source);
     if (result.error) setStatus({ kind: 'error', text: result.error });
-    else if (result.file) { const file = result.file; setSelected((current) => [...current, file]); setSentTo(undefined); }
+    else if (result.file) { const file = result.file; setSelected((current) => [...current, file]); setSent(false); }
   }
 
   async function processFiles() {
     if (!selected.length || !projectId) return;
+    const totalBytes = selected.reduce((sum, file) => sum + (file.size ?? 0), 0);
+    if (totalBytes > MAX_UPLOAD_BYTES) {
+      setStatus({ kind: 'error', text: `Envio excede o limite total de ${MAX_UPLOAD_BYTES / (1024 * 1024)} MB.` });
+      return;
+    }
     setBusy(true); setStatus(undefined);
-    const failed: PickedFile[] = [];
-    for (const file of selected) {
-      try {
-        await projectsApi.upload(token, projectId, { base64Document: await readBase64(file), mimeType: file.mimeType, fileName: file.name });
-      } catch (error) {
-        failed.push(file);
-        setStatus({ kind: 'error', text: errorMessage(error, `Falha ao enviar ${file.name}.`) });
-      }
+    try {
+      const files = await Promise.all(selected.map(async (file) => ({
+        documentType: documentTypeFromMime(file.mimeType),
+        base64Document: await readBase64(file),
+        fileName: file.name,
+      })));
+      await processApi.processDocuments(token, projectId, files);
+      setStatus({ kind: 'success', text: `${files.length} documento(s) enviado(s) para processamento.` });
+      setSelected([]);
+      setSent(true);
+    } catch (error) {
+      setStatus({ kind: 'error', text: errorMessage(error, 'Não foi possível iniciar o processamento.') });
+    } finally {
+      setBusy(false);
     }
-    const sent = selected.length - failed.length;
-    setSelected(failed);
-    if (sent) {
-      setSentTo(projectId);
-      if (!failed.length) setStatus({ kind: 'success', text: `${sent} documento(s) enviado(s) para processamento.` });
-    }
-    setBusy(false);
   }
 
   const project = projects.find((p) => p.classifierId === projectId);
@@ -106,10 +116,10 @@ export default function ProcessScreen() {
     </Card>
 
     {!!selected.length && <Pressable disabled={!canSend} onPress={processFiles} style={[styles.primary, !canSend && styles.disabled]}>
-      <ThemedText style={styles.primaryText}>{busy ? 'Enviando...' : !projectId ? 'Selecione um projeto' : `Enviar para ${project?.name ?? 'projeto'}`}</ThemedText>
+      <ThemedText style={styles.primaryText}>{busy ? 'Enviando...' : !projectId ? 'Selecione um projeto' : `Processar com ${project?.name ?? 'projeto'}`}</ThemedText>
     </Pressable>}
     {status && <ThemedText style={{ color: status.kind === 'error' ? theme.danger : theme.success }}>{status.text}</ThemedText>}
-    {sentTo && <Pressable onPress={() => router.push(`/classifiers/${sentTo}`)} style={[styles.secondary, { borderColor: theme.border, backgroundColor: theme.secondary }]}><ThemedText style={styles.secondaryLabel}>Abrir projeto</ThemedText></Pressable>}
+    {sent && <Pressable onPress={() => router.push('/dashboard')} style={[styles.secondary, { borderColor: theme.border, backgroundColor: theme.secondary }]}><ThemedText style={styles.secondaryLabel}>Acompanhar no dashboard</ThemedText></Pressable>}
   </Screen>;
 }
 
