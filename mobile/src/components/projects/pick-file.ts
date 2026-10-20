@@ -23,8 +23,11 @@ function validate(file: PickedFile): string | undefined {
 
 export type FileSource = 'files' | 'photos' | 'camera';
 
-/** Seleciona um único documento (arquivos, fotos ou câmera), com as mesmas validações do web. */
-export async function pickProjectFile(source: FileSource): Promise<{ file?: PickedFile; error?: string }> {
+/**
+ * Seleciona um documento (arquivos, fotos ou câmera), com as mesmas validações do web.
+ * A câmera pode devolver um lote de páginas recortadas em `files`; `file` é a primeira.
+ */
+export async function pickProjectFile(source: FileSource): Promise<{ file?: PickedFile; files?: PickedFile[]; error?: string }> {
   let file: PickedFile | undefined;
   if (source === 'photos') {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -35,10 +38,12 @@ export async function pickProjectFile(source: FileSource): Promise<{ file?: Pick
     const name = asset.fileName ?? `foto-${Date.now()}.jpg`;
     file = { name, uri: asset.uri, mimeType: asset.mimeType ?? mimeFromName(name), size: asset.fileSize };
   } else if (source === 'camera') {
-    // Captura guiada (mesmo scanner Kofax do web), com câmera normal como alternativa dentro dele.
+    // Captura guiada (mesmo scanner Kofax do web): sempre recortada, uma ou várias páginas.
     const scanned = await scanDocument();
-    if (!scanned.file) return { error: scanned.error };
-    file = scanned.file;
+    if (!scanned.files?.length) return { error: scanned.error };
+    const files = scanned.files;
+    const error = files.map(validate).find(Boolean);
+    return error ? { error } : { file: files[0], files };
   } else {
     const result = await DocumentPicker.getDocumentAsync({ type: SUPPORTED_MIME_TYPES, multiple: false, copyToCacheDirectory: true });
     if (result.canceled || !result.assets[0]) return {};

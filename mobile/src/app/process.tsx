@@ -49,7 +49,7 @@ export default function ProcessScreen() {
     setStatus(undefined);
     const result = await pickProjectFile(source);
     if (result.error) setStatus({ kind: 'error', text: result.error });
-    else if (result.file) { const file = result.file; setSelected((current) => [...current, file]); setSent(false); }
+    else if (result.file) { const files = result.files ?? [result.file]; setSelected((current) => [...current, ...files]); setSent(false); }
   }
 
   async function processFiles() {
