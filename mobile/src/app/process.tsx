@@ -53,7 +53,7 @@ export default function ProcessScreen() {
   }
 
   async function processFiles() {
-    if (!selected.length || !projectId) return;
+    if (!selected.length || !project || loadingProjects || busy) return;
     const totalBytes = selected.reduce((sum, file) => sum + (file.size ?? 0), 0);
     if (totalBytes > MAX_UPLOAD_BYTES) {
       setStatus({ kind: 'error', text: `Envio excede o limite total de ${MAX_UPLOAD_BYTES / (1024 * 1024)} MB.` });
@@ -66,7 +66,7 @@ export default function ProcessScreen() {
         base64Document: await readBase64(file),
         fileName: file.name,
       })));
-      await processApi.processDocuments(token, projectId, files);
+      await processApi.processDocuments(token, project.classifierId, files);
       setStatus({ kind: 'success', text: `${files.length} documento(s) enviado(s) para processamento.` });
       setSelected([]);
       setSent(true);
@@ -78,17 +78,20 @@ export default function ProcessScreen() {
   }
 
   const project = projects.find((p) => p.classifierId === projectId);
-  const canSend = !!selected.length && !!projectId && !busy;
+  const canSend = !!selected.length && !!project && !busy && !loadingProjects;
 
   return <Screen title="Processar documentos">
     <Card>
-      <ThemedText type="smallBold">1. Projeto</ThemedText>
+      <ThemedText type="smallBold">{projects.length === 1 ? 'Projeto' : '1. Projeto'}</ThemedText>
       {loadingProjects && !projects.length && <ThemedText style={styles.muted}>Carregando projetos...</ThemedText>}
       {!loadingProjects && !projects.length && <>
         <ThemedText style={styles.muted}>Nenhum projeto encontrado.</ThemedText>
         <Pressable onPress={() => router.push('/classifiers')} style={[styles.secondary, { borderColor: theme.border, backgroundColor: theme.secondary }]}><ThemedText style={styles.secondaryLabel}>Criar projeto</ThemedText></Pressable>
       </>}
-      {projects.map((item) => {
+      {projects.length === 1 ? <>
+        <ThemedText type="smallBold">{projects[0].name || 'Projeto'}</ThemedText>
+        <ThemedText style={styles.muted}>{projects[0].modelsCount} classe(s)</ThemedText>
+      </> : projects.map((item) => {
         const active = item.classifierId === projectId;
         return <Pressable key={item.classifierId} onPress={() => setProjectId(item.classifierId)} style={[styles.option, { borderColor: active ? '#208AEF' : theme.border, backgroundColor: active ? theme.selected : theme.input }]}>
           <View style={[styles.radio, active && styles.radioActive]} />
@@ -101,7 +104,7 @@ export default function ProcessScreen() {
     </Card>
 
     <Card>
-      <ThemedText type="smallBold">2. Documentos</ThemedText>
+      <ThemedText type="smallBold">{projects.length === 1 ? 'Documentos' : '2. Documentos'}</ThemedText>
       <ThemedText style={styles.muted}>PDF ou imagens (até 20 MB).</ThemedText>
       <View style={styles.sources}>
         {SOURCES.map(({ source, label, icon }) => <Pressable key={source} disabled={busy} onPress={() => addFile(source)} style={[styles.source, { borderColor: theme.border, backgroundColor: theme.input }]}>
